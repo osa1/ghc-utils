@@ -72,24 +72,31 @@ fn main() {
     let allocs1 = make_alloc_map(&parse_prof_file(&args[1]));
     let mut allocs2 = make_alloc_map(&parse_prof_file(&args[2]));
 
-    let mut diff_map: HashMap<String, i64> = HashMap::new();
+    let mut diffs: Vec<(String, i64)> = vec![];
+
     for (cc, alloc1) in allocs1.into_iter() {
         let diff = match allocs2.remove(&cc) {
             None => alloc1 as i64,
             Some(alloc2) => (alloc2 as i64) - (alloc1 as i64),
         };
         if diff != 0 {
-            diff_map.insert(cc, diff);
+            diffs.push((cc, diff));
         }
     }
 
     for (cc, alloc2) in allocs2.into_iter() {
         if alloc2 != 0 {
-            diff_map.insert(cc, alloc2 as i64);
+            diffs.push((cc, alloc2 as i64));
         }
     }
 
-    for (k, v) in diff_map.iter() {
+    diffs.sort_by_key(|&(_, v)| std::cmp::Reverse(v));
+
+    let mut total = 0;
+    for (k, v) in diffs {
         println!("{}: {}", k, v);
+        total += v;
     }
+    println!();
+    println!("TOTAL: {}", total);
 }
