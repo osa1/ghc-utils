@@ -76,7 +76,7 @@ fn main() {
 
     for (cc, alloc1) in allocs1.into_iter() {
         let diff = match allocs2.remove(&cc) {
-            None => alloc1 as i64,
+            None => -(alloc1 as i64),
             Some(alloc2) => (alloc2 as i64) - (alloc1 as i64),
         };
         if diff != 0 {
