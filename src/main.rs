@@ -67,10 +67,9 @@ fn add_profile(alloc_map: &mut HashMap<String, u64>, p: &Profile, cc_map: &HashM
     }
 }
 
-fn main() {
-    let args = std::env::args().collect::<Vec<_>>();
-    let allocs1 = make_alloc_map(&parse_prof_file(&args[1]));
-    let mut allocs2 = make_alloc_map(&parse_prof_file(&args[2]));
+fn compare(f1: &str, f2: &str) {
+    let allocs1 = make_alloc_map(&parse_prof_file(f1));
+    let mut allocs2 = make_alloc_map(&parse_prof_file(f2));
 
     let mut diffs: Vec<(String, i64)> = vec![];
 
@@ -99,4 +98,45 @@ fn main() {
     }
     println!();
     println!("TOTAL: {}", total);
+}
+
+fn show_allocs(f: &str) {
+    let allocs = make_alloc_map(&parse_prof_file(f));
+    let mut allocs = allocs.into_iter().collect::<Vec<(String, u64)>>();
+    allocs.sort_by_key(|&(_, v)| std::cmp::Reverse(v));
+
+    let total: u64 = allocs.iter().map(|&(_, v)| v).sum();
+    let total_f: f64 = total as f64;
+
+    for (cc, alloc) in allocs.iter() {
+        if *alloc != 0 {
+            println!(
+                "{}: {} ({:.2}%)",
+                cc,
+                alloc,
+                ((*alloc as f64) / total_f) * 100.0f64
+            );
+        }
+    }
+
+    println!("TOTAL: {}", total);
+}
+
+fn main() {
+    let args = std::env::args().collect::<Vec<_>>();
+
+    match args.len() {
+        3 => {
+            compare(&args[1], &args[2]);
+        }
+        2 => {
+            show_allocs(&args[1]);
+        }
+        _ => {
+            println!("USAGE:");
+            println!("(1) ghc-prof-compare <file1> <file2> # to compare two files for allocations");
+            println!("(2) ghc-prof-compare <file>          # to show allocations, sorted");
+            std::process::exit(1);
+        }
+    }
 }
