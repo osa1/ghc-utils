@@ -8,6 +8,10 @@ edition = "2018"
 name = "ghc-prof-compare"
 path = "src/ghc_prof_compare.rs"
 
+[[bin]]
+name = "fs-compare"
+path = "src/fs_compare.rs"
+
 [dependencies]
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
