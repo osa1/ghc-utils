@@ -63,29 +63,32 @@ fn file_sizes(root: &Path, dir: &Path, ext: &str, files: &mut HashMap<String, u6
 
 fn compare_files(f1: HashMap<String, u64>, mut f2: HashMap<String, u64>) {
     // bool: whether the file exists in both dirs
-    let mut diffs: Vec<(String, i64, bool)> = Vec::with_capacity(std::cmp::max(f1.len(), f2.len()));
+    let mut diffs: Vec<(String, i64, Option<f64>, bool)> =
+        Vec::with_capacity(std::cmp::max(f1.len(), f2.len()));
 
     for (k, v1) in f1.into_iter() {
         match f2.remove(&k) {
             None => {
-                diffs.push((k, -(v1 as i64), false));
+                diffs.push((k, -(v1 as i64), None, false));
             }
             Some(v2) => {
                 if v1 != v2 {
-                    diffs.push((k, (v2 as i64) - (v1 as i64), true))
+                    let diff = (v2 as i64) - (v1 as i64);
+                    let p = ((diff as f64) / (v1 as f64)) * 100f64;
+                    diffs.push((k, diff, Some(p), true))
                 }
             }
         }
     }
 
     for (k, v2) in f2.into_iter() {
-        diffs.push((k, v2 as i64, false));
+        diffs.push((k, v2 as i64, None, false));
     }
 
     // Sort the vector based on diff size
-    diffs.sort_by_key(|&(_, v, _)| std::cmp::Reverse(v));
+    diffs.sort_by_key(|&(_, v, _, _)| std::cmp::Reverse(v));
 
-    for (path, diff, exists_both) in diffs.into_iter() {
+    for (path, diff, p, exists_both) in diffs.into_iter() {
         let sign = if exists_both {
             '~'
         } else if diff > 0 {
@@ -94,7 +97,14 @@ fn compare_files(f1: HashMap<String, u64>, mut f2: HashMap<String, u64>) {
             '-'
         };
 
-        println!("[{}] {}: {:+}", sign, path, diff);
+        match p {
+            None => {
+                println!("[{}] {}: {:+}", sign, path, diff);
+            }
+            Some(p) => {
+                println!("[{}] {}: {:+} ({:.2}%)", sign, path, diff, p);
+            }
+        }
     }
 }
 
