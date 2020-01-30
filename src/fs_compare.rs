@@ -74,12 +74,17 @@ fn compare_files(f1: HashMap<String, u64>, mut f2: HashMap<String, u64>, sort_p:
     let mut diffs: Vec<(String, i64, Option<f64>, bool)> =
         Vec::with_capacity(std::cmp::max(f1.len(), f2.len()));
 
+    let mut total1 = 0;
+    let mut total2 = 0;
+
     for (k, v1) in f1.into_iter() {
+        total1 += v1;
         match f2.remove(&k) {
             None => {
                 diffs.push((k, -(v1 as i64), None, false));
             }
             Some(v2) => {
+                total2 += v2;
                 if v1 != v2 {
                     let diff = (v2 as i64) - (v1 as i64);
                     let p = ((diff as f64) / (v1 as f64)) * 100f64;
@@ -90,6 +95,7 @@ fn compare_files(f1: HashMap<String, u64>, mut f2: HashMap<String, u64>, sort_p:
     }
 
     for (k, v2) in f2.into_iter() {
+        total2 += v2;
         diffs.push((k, v2 as i64, None, false));
     }
 
@@ -118,6 +124,10 @@ fn compare_files(f1: HashMap<String, u64>, mut f2: HashMap<String, u64>, sort_p:
             }
         }
     }
+
+    let total_diff = (total2 as i64) - (total1 as i64);
+    let total_p = ((total_diff as f64) / (total1 as f64)) * 100f64;
+    println!("TOTAL: {} ({:.2}%)", total_diff, total_p);
 }
 
 fn main() {
