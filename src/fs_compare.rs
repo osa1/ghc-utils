@@ -6,7 +6,29 @@ use std::collections::HashMap;
 use std::fs;
 use std::path::Path;
 
-fn file_sizes(root: &Path, dir: &Path, ext: &str, files: &mut HashMap<String, u64>) {
+use clap::{App, Arg};
+
+fn add_file(root: &Path, dir_ent: &fs::DirEntry, path: &Path, files: &mut HashMap<String, u64>) {
+    match dir_ent.metadata() {
+        Err(err) => {
+            eprintln!("Error when getting metadata of {:?}: {:?}", path, err);
+        }
+        Ok(metadata) => {
+            if metadata.is_file() {
+                let size = metadata.len();
+                files.insert(
+                    path.strip_prefix(root)
+                        .unwrap()
+                        .to_string_lossy()
+                        .into_owned(),
+                    size,
+                );
+            }
+        }
+    }
+}
+
+fn file_sizes(root: &Path, dir: &Path, ext: Option<&str>, files: &mut HashMap<String, u64>) {
     for dir_ent in fs::read_dir(dir).unwrap() {
         let dir_ent = dir_ent.unwrap();
         let path = dir_ent.path();
@@ -23,34 +45,20 @@ fn file_sizes(root: &Path, dir: &Path, ext: &str, files: &mut HashMap<String, u6
         if file_type.is_dir() {
             file_sizes(root, &path, ext, files);
         } else {
-            if let Some(ext_found) = path.extension() {
-                match ext_found.to_str() {
-                    None => {
-                        eprintln!("Can't convert Path extension to &str: {:?}", path);
-                        continue;
-                    }
-                    Some(ext_found_str) => {
-                        if ext_found_str == ext {
-                            match dir_ent.metadata() {
-                                Err(err) => {
-                                    eprintln!(
-                                        "Error when getting metadata of {:?}: {:?}",
-                                        path, err
-                                    );
-                                    continue;
-                                }
-                                Ok(metadata) => {
-                                    if metadata.is_file() {
-                                        let size = metadata.len();
-                                        files.insert(
-                                            path.strip_prefix(root)
-                                                .unwrap()
-                                                .to_string_lossy()
-                                                .into_owned(),
-                                            size,
-                                        );
-                                        continue;
-                                    }
+            match ext {
+                None => {
+                    add_file(root, &dir_ent, &path, files);
+                }
+                Some(ext_wanted) => {
+                    if let Some(ext_found) = path.extension() {
+                        match ext_found.to_str() {
+                            None => {
+                                eprintln!("Can't convert Path extension to &str: {:?}", path);
+                                continue;
+                            }
+                            Some(ext_found_str) => {
+                                if ext_found_str == ext_wanted {
+                                    add_file(root, &dir_ent, &path, files);
                                 }
                             }
                         }
@@ -61,7 +69,7 @@ fn file_sizes(root: &Path, dir: &Path, ext: &str, files: &mut HashMap<String, u6
     }
 }
 
-fn compare_files(f1: HashMap<String, u64>, mut f2: HashMap<String, u64>) {
+fn compare_files(f1: HashMap<String, u64>, mut f2: HashMap<String, u64>, sort_p: bool) {
     // bool: whether the file exists in both dirs
     let mut diffs: Vec<(String, i64, Option<f64>, bool)> =
         Vec::with_capacity(std::cmp::max(f1.len(), f2.len()));
@@ -85,8 +93,12 @@ fn compare_files(f1: HashMap<String, u64>, mut f2: HashMap<String, u64>) {
         diffs.push((k, v2 as i64, None, false));
     }
 
-    // Sort the vector based on diff size
-    diffs.sort_by_key(|&(_, v, _, _)| std::cmp::Reverse(v));
+    // Sort the vector based on diff size or percentage
+    if sort_p {
+        diffs.sort_by(|&(_, _, p1, _), &(_, _, p2, _)| p2.partial_cmp(&p1).unwrap());
+    } else {
+        diffs.sort_by_key(|&(_, v, _, _)| std::cmp::Reverse(v));
+    }
 
     for (path, diff, p, exists_both) in diffs.into_iter() {
         let sign = if exists_both {
@@ -109,10 +121,23 @@ fn compare_files(f1: HashMap<String, u64>, mut f2: HashMap<String, u64>) {
 }
 
 fn main() {
-    let args = std::env::args().collect::<Vec<_>>();
-    let dir1 = &args[1];
-    let dir2 = &args[2];
-    let ext = &args[3];
+    let args = App::new("fs-compare")
+        .arg(Arg::with_name("dir_1").takes_value(true).required(true))
+        .arg(Arg::with_name("dir_2").takes_value(true).required(true))
+        .arg(Arg::with_name("ext").takes_value(true).required(false))
+        .arg(
+            Arg::with_name("sort_percentage")
+                .help("Sort files by increase in percentage, rather than in bytes")
+                .takes_value(false)
+                .required(false)
+                .short("p"),
+        )
+        .get_matches();
+
+    let dir1 = args.value_of("dir_1").unwrap();
+    let dir2 = args.value_of("dir_2").unwrap();
+    let ext = args.value_of("ext");
+    let sort_p = args.is_present("sort_percentage");
 
     let mut files1 = HashMap::new();
     let dir1_path = Path::new(dir1);
@@ -122,5 +147,5 @@ fn main() {
     let dir2_path = Path::new(dir2);
     file_sizes(dir2_path, dir2_path, ext, &mut files2);
 
-    compare_files(files1, files2);
+    compare_files(files1, files2, sort_p);
 }
