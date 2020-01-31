@@ -1,16 +1,20 @@
 [package]
-name = "ghc-prof-compare"
+name = "ghc-utils"
 version = "0.1.0"
 authors = ["Ömer Sinan Ağacan <omeragacan@gmail.com>"]
 edition = "2018"
 
+[lib]
+name = "ghc-utils"
+path = "src/lib.rs"
+
 [[bin]]
 name = "ghc-prof-compare"
-path = "src/ghc_prof_compare.rs"
+path = "bin/ghc_prof_compare.rs"
 
 [[bin]]
 name = "fs-compare"
-path = "src/fs_compare.rs"
+path = "bin/fs_compare.rs"
 
 [dependencies]
 clap = "2.3"
