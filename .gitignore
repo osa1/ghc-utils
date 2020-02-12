@@ -1,1 +1,4 @@
 /target
+*.o
+*.hi
+hs/parse_hs

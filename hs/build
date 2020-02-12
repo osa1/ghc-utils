@@ -1,0 +1,8 @@
+#!/bin/bash
+
+set -e
+set -x
+
+GHC="${GHC:-ghc}"
+
+$GHC parse-hs.hs -package ghc -O -rtsopts -fforce-recomp -o parse_hs
