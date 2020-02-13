@@ -1,4 +1,4 @@
-{-# LANGUAGE BangPatterns #-}
+{-# LANGUAGE Strict #-}
 
 import FastString
 import Lexer (ParserFlags (..), ParseResult (..), P (..), mkPStatePure)
