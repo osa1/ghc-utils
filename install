@@ -7,3 +7,4 @@ cargo build --release
 
 cp target/release/fs-compare ~/bin/fs-compare
 cp target/release/ghc-prof-compare ~/bin/ghc-prof-compare
+cp target/release/obj-loc ~/bin/obj-loc
