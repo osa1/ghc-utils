@@ -132,6 +132,7 @@ fn compare_files(f1: HashMap<String, u64>, mut f2: HashMap<String, u64>, sort_p:
 
 fn main() {
     let args = App::new("fs-compare")
+        .about("Compares sizes of files with the given extension (all files if extension is not given)")
         .arg(Arg::with_name("dir_1").takes_value(true).required(true))
         .arg(Arg::with_name("dir_2").takes_value(true).required(true))
         .arg(Arg::with_name("ext").takes_value(true).required(false))
