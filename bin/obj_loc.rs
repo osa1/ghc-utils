@@ -265,17 +265,6 @@ fn find_locs(gcs: &[GC], era: usize, addr: Addr) -> Moves {
         era: first_era as u64,
         moves: bwd_moves,
     }
-
-    /*
-    // Print locations
-    for (i, bwd_move) in bwd_moves.iter().rev().enumerate() {
-        println!("{}: {:#?} -> {:#?}", first_era + i, bwd_move.0, bwd_move.1);
-    }
-
-    for (i, fwd_move) in fwd_moves.iter().enumerate() {
-        println!("{}: {:#?} -> {:#?}", era + i, fwd_move.0, fwd_move.1);
-    }
-    */
 }
 
 #[test]
