@@ -1,3 +1,20 @@
+/*
+
+An example gdb script for this program:
+
+    break GC.c:269
+    commands 1
+    printf ">>> GC %d\n", major_gc
+    continue
+    end
+    break move
+    commands 2
+    printf ">>> %p -> %p size: %d\n", from, to, size
+    continue
+    end
+
+ */
+
 #![feature(or_patterns)]
 
 use std::collections::HashMap;
