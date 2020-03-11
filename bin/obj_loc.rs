@@ -27,6 +27,7 @@ use std::fmt;
 use std::fs::File;
 use std::io::{BufRead, BufReader};
 
+use ansi_term::Color;
 use clap::{App, Arg};
 use rustyline::error::ReadlineError;
 use rustyline::Editor;
@@ -153,7 +154,18 @@ fn repl(gcs: &[GC]) {
                     for moves in find_moves(gcs, addr) {
                         let mut era = moves.era;
                         for move_ in moves.moves {
-                            println!("{}: {:#?}", era, move_);
+                            if move_.0 == addr {
+                                println!(
+                                    "{}: {}{:#?}{}",
+                                    era,
+                                    Color::Blue.prefix(),
+                                    move_,
+                                    Color::Blue.suffix()
+                                );
+                            } else {
+                                println!("{}: {:#?}", era, move_);
+                            };
+
                             era += 1;
                         }
                         println!();

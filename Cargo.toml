@@ -21,6 +21,7 @@ name = "obj-loc"
 path = "bin/obj_loc.rs"
 
 [dependencies]
+ansi_term = "0.12.1"
 clap = "2.3"
 lazy_static = "1.4"
 regex = "1"
