@@ -1,3 +1,9 @@
+// TODO: This ccurrently assumes if an object is not moved in a GC it dies, which is not correct.
+// E.g. an object in the oldest generation is not moved in minor GCs.
+
+// TODO: The gdb script below does not print x->x when compacting GC skips an object because it's
+// new location is the same as the current one.
+
 /*
 
 An example gdb script for this program:
