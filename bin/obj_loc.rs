@@ -190,6 +190,7 @@ fn repl(gcs: &[GC]) {
 
     loop {
         match rl.readline(">>> ") {
+            Ok(line) if line.trim().is_empty() => {}
             Ok(line) => match parse_hex(&line) {
                 None => {
                     println!("Unable to parse address: {}", line);
