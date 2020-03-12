@@ -20,6 +20,9 @@ An example gdb script for this program:
 
  */
 
+// NOTE: All indices below are 0-based, but when printing GC indices we print 1-based, so the first
+// GC is printed as "1".
+
 #![feature(or_patterns)]
 
 use std::collections::HashMap;
@@ -27,7 +30,7 @@ use std::fmt;
 use std::fs::File;
 use std::io::{BufRead, BufReader};
 
-use ansi_term::Color;
+use ansi_term::{Color, Style};
 use clap::{App, Arg};
 use rustyline::error::ReadlineError;
 use rustyline::Editor;
@@ -51,26 +54,40 @@ struct AddrSize {
 
 #[derive(Debug)]
 struct GC {
+    /// Is this a major GC?
     major: bool,
-    moves_to: HashMap<Addr, AddrSize>,
-    moves_from: HashMap<Addr, AddrSize>,
+
+    /// All moves in this GC. Note that in compacting GC we can see moves that are normally invalid
+    /// in two-space copying GC, e.g. `y -> z; x -> y`.
+    moves_fwd: HashMap<Addr, AddrSize>,
+
+    /// Reverse of `moves_fwd`. It's possible to revert `moves_fwd` because in a single GC we can't
+    /// move two objects to the same location.
+    /// E.g. we'll never see something like `x -> y; z -> y`.
+    ///
+    /// In other words, in a GC, an object is moved at most once, and a location gets at most one
+    /// object.
+    moves_bwd: HashMap<Addr, AddrSize>,
 }
 
 impl GC {
     fn new(major: bool) -> GC {
         GC {
             major,
-            moves_to: HashMap::new(),
-            moves_from: HashMap::new(),
+            moves_fwd: HashMap::new(),
+            moves_bwd: HashMap::new(),
         }
     }
 }
 
 #[derive(Debug, PartialEq, Eq)]
 struct Moves {
-    /// Object first appears in this era.
-    era: u64,
-    /// All the moves of the objects. First move is in `era`.
+    /// The location we searched for.
+    loc: Addr,
+    /// The first GC in which we've made a move `x -> y`, and the moves `y -> z`, ... eventually
+    /// reached `loc`.
+    first_move: usize,
+    /// All the moves of the objects. First move happens at `gc`th GC.
     moves: Vec<Addr>,
 }
 
@@ -117,12 +134,9 @@ fn parse<B: BufRead>(reader: B) -> Vec<GC> {
                 let size = str::parse::<u64>(words[4])
                     .unwrap_or_else(|_| panic!("Unable to parse size: {}", words[4]));
                 let current_gc = current_gc.as_mut().unwrap();
-                current_gc
-                    .moves_to
-                    .insert(from, AddrSize { addr: to, size });
-                current_gc
-                    .moves_from
-                    .insert(to, AddrSize { addr: from, size });
+
+                insert_new(&mut current_gc.moves_fwd, from, AddrSize { addr: to, size });
+                insert_new(&mut current_gc.moves_bwd, to, AddrSize { addr: from, size });
             }
         }
     }
@@ -142,8 +156,32 @@ fn parse_hex_fail(s: &str) -> u64 {
     parse_hex(s).unwrap_or_else(|| panic!("Unable to parse hex: {}", s))
 }
 
+fn insert_new<K, V>(m: &mut HashMap<K, V>, k: K, v: V)
+where
+    K: Eq + std::hash::Hash,
+{
+    let ret = m.insert(k, v);
+    assert!(ret.is_none());
+}
+
 fn repl(gcs: &[GC]) {
+    let mut last_major_gc = 0;
+    for (gc_idx, gc) in gcs.iter().enumerate().rev() {
+        if gc.major {
+            last_major_gc = gc_idx + 1;
+            break;
+        }
+    }
+
+    println!("Total GCs: {}", gcs.len());
+    println!("Last major GC: {}", last_major_gc);
+    println!("`N: addr` means by the beginning on Nth GC the object lived at addr");
+
     let mut rl = Editor::<()>::new();
+
+    let bold = Style::new().bold();
+    let blue = Color::Blue;
+
     loop {
         match rl.readline(">>> ") {
             Ok(line) => match parse_hex(&line) {
@@ -152,21 +190,25 @@ fn repl(gcs: &[GC]) {
                 }
                 Some(addr) => {
                     for moves in find_moves(gcs, addr) {
-                        let mut era = moves.era;
+                        // Nth GC, 0-based
+                        let mut gc_n = moves.first_move;
                         for move_ in moves.moves {
-                            if move_.0 == addr {
-                                println!(
-                                    "{}: {}{:#?}{}",
-                                    era,
-                                    Color::Blue.prefix(),
-                                    move_,
-                                    Color::Blue.suffix()
-                                );
-                            } else {
-                                println!("{}: {:#?}", era, move_);
-                            };
+                            let highlight_gc = gcs[gc_n].major;
+                            let highlight_addr = move_.0 == addr;
 
-                            era += 1;
+                            if highlight_gc {
+                                print!("{}", bold.paint(format!("{}: ", gc_n + 1)));
+                            } else {
+                                print!("{}: ", gc_n + 1);
+                            }
+
+                            if highlight_addr {
+                                println!("{}", blue.paint(format!("{:#?}", move_)));
+                            } else {
+                                println!("{:#?}", move_);
+                            }
+
+                            gc_n += 1;
                         }
                         println!();
                     }
@@ -185,126 +227,147 @@ fn repl(gcs: &[GC]) {
     }
 }
 
+/// Find all moves of an object.
 fn find_moves(gcs: &[GC], addr: u64) -> Vec<Moves> {
     let addr = Addr(addr);
     let mut ret = vec![];
 
-    let mut skip_next_fwd = false;
-    for (era, gc) in gcs.iter().enumerate() {
-        if let Some(prev_addr) = gc.moves_from.get(&addr) {
-            ret.push(find_locs(gcs, era, prev_addr.addr));
-            skip_next_fwd = true;
-            continue;
+    // Searching for 'addr'. Two cases:
+    //
+    // - We see `addr -> y`:
+    //   - Follow 'y' starting from next GC.
+    //   - Reverse follow 'addr' starting from previous GC.
+    //
+    // - We see `y -> addr`:
+    //   - Follow 'addr' starting from next GC.
+    //   - Reverse follow 'y' starting from previous GC.
+    //
+    // First case happens when `addr` is allocated by a mutator rather than GC.
+
+    // In the second case we will follow 'addr' in the next GC so we should skip the first case in
+    // the next iteration:
+    let mut skip_first_case = false;
+
+    for (gc_n, gc) in gcs.iter().enumerate() {
+        if !skip_first_case {
+            // First case, 'x -> y', `next_addr` is 'y'
+            if let Some(next_addr) = gc.moves_fwd.get(&addr) {
+                let fwd_moves = follow_fwd(&gcs[gc_n + 1..], next_addr.addr);
+                let mut bwd_moves = follow_bwd(&gcs[0..gc_n], addr);
+                let first_move = gc_n - bwd_moves.len();
+                bwd_moves.reverse();
+                bwd_moves.push(addr);
+                bwd_moves.push(next_addr.addr);
+                bwd_moves.extend_from_slice(&fwd_moves);
+                ret.push(Moves {
+                    loc: addr,
+                    first_move,
+                    moves: bwd_moves,
+                });
+            }
         }
 
-        if skip_next_fwd {
-            skip_next_fwd = false;
-            continue;
-        }
+        skip_first_case = false;
 
-        skip_next_fwd = false;
-
-        if gc.moves_to.get(&addr).is_some() {
-            ret.push(find_locs(gcs, era, addr));
+        // Second case, 'y -> x', `prev_addr` is 'y'
+        if let Some(prev_addr) = gc.moves_bwd.get(&addr) {
+            let fwd_moves = follow_fwd(&gcs[gc_n + 1..], addr);
+            let mut bwd_moves = follow_bwd(&gcs[0..gc_n], prev_addr.addr);
+            let first_move = gc_n - bwd_moves.len();
+            bwd_moves.reverse();
+            bwd_moves.push(prev_addr.addr);
+            bwd_moves.push(addr);
+            bwd_moves.extend_from_slice(&fwd_moves);
+            ret.push(Moves {
+                loc: addr,
+                first_move,
+                moves: bwd_moves,
+            });
+            skip_first_case = true;
         }
     }
 
     ret
 }
 
-/// Find moves of the given object which was moved to its given location at the given era
-fn find_locs(gcs: &[GC], era: usize, addr: Addr) -> Moves {
-    // println!("find_locs: era={}, addr={:#?}", era, addr);
+fn follow_fwd(gcs: &[GC], addr: Addr) -> Vec<Addr> {
+    // println!("follow_fwd: gcs={:#?}, addr={:#?}", gcs, addr);
 
-    //
-    // Backwards search
-    //
+    let mut ret = vec![];
 
-    let mut first_era = era;
-    let mut bwd_moves: Vec<Addr> = vec![];
-    let mut current_loc = addr;
-
-    for prev_era in (0..era).rev() {
-        let gc = &gcs[prev_era];
-        match gc.moves_from.get(&current_loc) {
-            None => {
-                break;
-            }
-            Some(prev_addr) => {
-                bwd_moves.push(prev_addr.addr);
-                current_loc = prev_addr.addr;
-                first_era = prev_era;
-            }
-        }
-    }
-
-    //
-    // Forwards search
-    //
-
-    let mut fwd_moves: Vec<Addr> = vec![];
-    let mut current_loc = addr;
-
-    for gc in &gcs[era..] {
-        match gc.moves_to.get(&current_loc) {
+    for gc in gcs {
+        match gc.moves_fwd.get(&addr) {
             None => {
                 break;
             }
             Some(next_addr) => {
-                fwd_moves.push(next_addr.addr);
-                current_loc = next_addr.addr;
+                ret.push(next_addr.addr);
             }
         }
     }
 
-    bwd_moves.reverse();
-    bwd_moves.push(addr);
-    bwd_moves.extend_from_slice(&fwd_moves);
-
-    Moves {
-        era: first_era as u64,
-        moves: bwd_moves,
-    }
+    ret
 }
+
+fn follow_bwd(gcs: &[GC], addr: Addr) -> Vec<Addr> {
+    // println!("follow_bwd: gcs={:#?}, addr={:#?}", gcs, addr);
+
+    let mut ret = vec![];
+
+    for gc in gcs.iter().rev() {
+        match gc.moves_bwd.get(&addr) {
+            None => {
+                break;
+            }
+            Some(prev_addr) => {
+                ret.push(prev_addr.addr);
+            }
+        }
+    }
+
+    ret
+}
+
+//
+// Tests
+//
 
 #[test]
 fn parse_test() {
     let input = "\
         >>> GC 1\n\
         >>> 0x123 -> 0x124 size: 1\n\
+        >>> 0x122 -> 0x123 size: 2\n\
+        >>> GC 2\n\
     ";
 
     let gcs = parse(input.as_bytes());
-    assert_eq!(gcs.len(), 1);
+    assert_eq!(gcs.len(), 2);
     assert_eq!(
-        gcs[0].moves_to.get(&Addr(0x123)),
+        gcs[0].moves_fwd.get(&Addr(0x123)),
         Some(&AddrSize {
             addr: Addr(0x124),
             size: 1
         })
     );
     assert_eq!(
-        gcs[0].moves_from.get(&Addr(0x124)),
+        gcs[0].moves_fwd.get(&Addr(0x122)),
+        Some(&AddrSize {
+            addr: Addr(0x123),
+            size: 2
+        })
+    );
+    assert_eq!(
+        gcs[0].moves_bwd.get(&Addr(0x124)),
         Some(&AddrSize {
             addr: Addr(0x123),
             size: 1
         })
     );
-
-    let input = "\
-        >>> GC 1\n\
-        >>> 0x123 -> 0x124 size: 1\n\
-        >>> GC 2\n\
-        >>> 0x124 -> 0x125 size: 2\n\
-        >>> 0x100 -> 0x101 size: 3\n\
-    ";
-
-    let gcs = parse(input.as_bytes());
-    assert_eq!(gcs.len(), 2);
     assert_eq!(
-        gcs[1].moves_to.get(&Addr(0x124)),
+        gcs[0].moves_bwd.get(&Addr(0x123)),
         Some(&AddrSize {
-            addr: Addr(0x125),
+            addr: Addr(0x122),
             size: 2
         })
     );
@@ -329,7 +392,8 @@ fn find_moves_test() {
     assert_eq!(
         find_moves(&gcs, 0x123),
         vec![Moves {
-            era: 0,
+            loc: Addr(0x123),
+            first_move: 0,
             moves: vec![Addr(0x123), Addr(0x124), Addr(0x125)],
         }]
     );
@@ -337,7 +401,8 @@ fn find_moves_test() {
     assert_eq!(
         find_moves(&gcs, 0x100),
         vec![Moves {
-            era: 1,
+            loc: Addr(0x100),
+            first_move: 1,
             moves: vec![Addr(0x100), Addr(0x101)],
         }]
     );
@@ -349,7 +414,8 @@ fn find_moves_test() {
     assert_eq!(
         find_moves(&gcs, 0x101),
         vec![Moves {
-            era: 1,
+            loc: Addr(0x101),
+            first_move: 1,
             moves: vec![Addr(0x100), Addr(0x101)],
         }]
     );
@@ -357,7 +423,8 @@ fn find_moves_test() {
     assert_eq!(
         find_moves(&gcs, 0x125),
         vec![Moves {
-            era: 0,
+            loc: Addr(0x125),
+            first_move: 0,
             moves: vec![Addr(0x123), Addr(0x124), Addr(0x125)],
         }]
     );
@@ -365,7 +432,8 @@ fn find_moves_test() {
     assert_eq!(
         find_moves(&gcs, 0x124),
         vec![Moves {
-            era: 0,
+            loc: Addr(0x124),
+            first_move: 0,
             moves: vec![Addr(0x123), Addr(0x124), Addr(0x125)],
         }]
     );
@@ -379,32 +447,42 @@ fn complicated_test() {
     let input = "\
         >>> GC 1\n\
         >>> 0x124 -> 0x125 size: 2\n\
-        >>> 0x125 -> 0x126 size: 2\n\
+        >>> 0x123 -> 0x124 size: 2\n\
     ";
 
     let gcs = parse(input.as_bytes());
 
     assert_eq!(
         find_moves(&gcs, 0x124),
-        vec![Moves {
-            era: 0,
-            moves: vec![Addr(0x124), Addr(0x125)],
-        }]
+        vec![
+            Moves {
+                loc: Addr(0x124),
+                first_move: 0,
+                moves: vec![Addr(0x124), Addr(0x125)],
+            },
+            Moves {
+                loc: Addr(0x124),
+                first_move: 0,
+                moves: vec![Addr(0x123), Addr(0x124)],
+            }
+        ]
     );
 
     assert_eq!(
         find_moves(&gcs, 0x125),
         vec![Moves {
-            era: 0,
+            loc: Addr(0x125),
+            first_move: 0,
             moves: vec![Addr(0x124), Addr(0x125)],
         }]
     );
 
     assert_eq!(
-        find_moves(&gcs, 0x126),
+        find_moves(&gcs, 0x123),
         vec![Moves {
-            era: 0,
-            moves: vec![Addr(0x125), Addr(0x126)],
+            loc: Addr(0x123),
+            first_move: 0,
+            moves: vec![Addr(0x123), Addr(0x124)],
         }]
     );
 }
