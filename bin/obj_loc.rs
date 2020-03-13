@@ -6,34 +6,6 @@
 // TODO: The gdb script below does not print x->x when compacting GC skips an object because it's
 // new location is the same as the current one.
 
-/*
-
-An example gdb script for this program:
-
-$ rr replay -- --nx
-
-set pagination off
-set logging file gdb.txt
-set logging redirect on
-set logging on
-break GC.c:269
-commands 1
-printf ">>> GC %d\n", major_gc
-continue
-end
-break move
-commands 2
-printf ">>> %p -> %p size: %d\n", from, to, size
-continue
-end
-break Evac.c:148
-commands 3
-printf ">>> %p -> %p size: %d\n", from, to, size
-continue
-end
-
- */
-
 // NOTE: All indices below are 0-based, but when printing GC indices we print 1-based, so the first
 // GC is printed as "1".
 
