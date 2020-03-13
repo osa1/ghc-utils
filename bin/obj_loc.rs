@@ -180,7 +180,9 @@ fn repl(gcs: &[GC]) {
                         // Nth GC, 0-based
                         let mut gc_n = moves.first_move;
                         for move_ in moves.moves {
-                            let highlight_gc = gcs[gc_n].major;
+                            // When the object lives at the end of the run gc_n will be gcs.len(),
+                            // handle that case
+                            let highlight_gc = gc_n < gcs.len() && gcs[gc_n].major;
                             let highlight_addr = move_.0 == addr;
 
                             if highlight_gc {
