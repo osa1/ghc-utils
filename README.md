@@ -32,3 +32,6 @@
   continue
   end
   ```
+  **Note that gdb by default extends the log file, does not override it! Make
+  sure to use a new log file every time (or remove the old one before recording
+  a new one!)**
