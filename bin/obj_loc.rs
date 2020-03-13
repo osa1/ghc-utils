@@ -176,6 +176,7 @@ fn repl(gcs: &[GC]) {
                     println!("Unable to parse address: {}", line);
                 }
                 Some(addr) => {
+                    rl.add_history_entry(line);
                     for moves in find_moves(gcs, addr) {
                         // Nth GC, 0-based
                         let mut gc_n = moves.first_move;
