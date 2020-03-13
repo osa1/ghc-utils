@@ -1,3 +1,5 @@
+// See README for example gdb commands to generate logs for this program.
+
 // TODO: This ccurrently assumes if an object is not moved in a GC it dies, which is not correct.
 // E.g. an object in the oldest generation is not moved in minor GCs.
 
@@ -8,21 +10,27 @@
 
 An example gdb script for this program:
 
-    break GC.c:269
-    commands 1
-    printf ">>> GC %d\n", major_gc
-    continue
-    end
-    break move
-    commands 2
-    printf ">>> %p -> %p size: %d\n", from, to, size
-    continue
-    end
-    break Evac.c:148
-    commands 3
-    printf ">>> %p -> %p size: %d\n", from, to, size
-    continue
-    end
+$ rr replay -- --nx
+
+set pagination off
+set logging file gdb.txt
+set logging redirect on
+set logging on
+break GC.c:269
+commands 1
+printf ">>> GC %d\n", major_gc
+continue
+end
+break move
+commands 2
+printf ">>> %p -> %p size: %d\n", from, to, size
+continue
+end
+break Evac.c:148
+commands 3
+printf ">>> %p -> %p size: %d\n", from, to, size
+continue
+end
 
  */
 
