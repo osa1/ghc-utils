@@ -20,6 +20,10 @@ path = "bin/fs_compare.rs"
 name = "obj-loc"
 path = "bin/obj_loc.rs"
 
+[[bin]]
+name = "nofib-to-gitlab"
+path = "bin/nofib_to_gitlab.rs"
+
 [dependencies]
 ansi_term = "0.12.1"
 clap = "2.3"
