@@ -103,27 +103,34 @@ fn parse<B: BufRead>(reader: B) -> Vec<GC> {
     for line in reader.lines() {
         let line = line.unwrap();
 
-        if line.starts_with(LINE_START) {
-            let line = &line[LINE_START.len()..];
-            let words: Vec<&str> = line.split_whitespace().collect();
-            if words[0] == "GC" {
-                if let Some(gc) = current_gc.take() {
-                    gcs.push(gc);
-                }
-                let major = words[1].parse::<u8>().unwrap() == 1;
-                current_gc = Some(GC::new(major));
-            } else {
-                assert!(current_gc.is_some());
-                // from '->' to 'size:' size
-                let from = Addr(parse_hex_fail(words[0]));
-                let to = Addr(parse_hex_fail(words[2]));
-                let size = str::parse::<u64>(words[4])
-                    .unwrap_or_else(|_| panic!("Unable to parse size: {}", words[4]));
-                let current_gc = current_gc.as_mut().unwrap();
-
-                insert_new(&mut current_gc.moves_fwd, from, AddrSize { addr: to, size });
-                insert_new(&mut current_gc.moves_bwd, to, AddrSize { addr: from, size });
+        let start_idx = match line.find(LINE_START) {
+            None => {
+                continue;
             }
+            Some(start_idx) => start_idx,
+        };
+
+        let line = &line[start_idx..];
+
+        let line = &line[LINE_START.len()..];
+        let words: Vec<&str> = line.split_whitespace().collect();
+        if words[0] == "GC" {
+            if let Some(gc) = current_gc.take() {
+                gcs.push(gc);
+            }
+            let major = words[1].parse::<u8>().unwrap() == 1;
+            current_gc = Some(GC::new(major));
+        } else {
+            assert!(current_gc.is_some());
+            // from '->' to 'size:' size
+            let from = Addr(parse_hex_fail(words[0]));
+            let to = Addr(parse_hex_fail(words[2]));
+            let size = str::parse::<u64>(words[4])
+                .unwrap_or_else(|_| panic!("Unable to parse size: {}", words[4]));
+            let current_gc = current_gc.as_mut().unwrap();
+
+            insert_new(&mut current_gc.moves_fwd, from, AddrSize { addr: to, size });
+            insert_new(&mut current_gc.moves_bwd, to, AddrSize { addr: from, size });
         }
     }
 
@@ -435,8 +442,8 @@ fn complicated_test() {
     // x, in the same GC. Make sure we handle this correctly.
 
     let input = "\
-        >>> GC 1\n\
-        >>> 0x124 -> 0x125 size: 2\n\
+        x >>> GC 1\n\
+        λ:2> unload [] >>> 0x124 -> 0x125 size: 2\n\
         >>> 0x123 -> 0x124 size: 2\n\
     ";
 
