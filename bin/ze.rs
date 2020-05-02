@@ -4,7 +4,7 @@ fn main() {
     for arg in std::env::args().skip(1) {
         match z_encode(&arg) {
             None => {
-                println!("");
+                println!();
             }
             Some(arg_z) => {
                 println!("{}", arg_z);

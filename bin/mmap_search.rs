@@ -34,7 +34,7 @@ fn parse_mmap_line(line: &str) -> Option<MapEvent> {
         return None;
     }
 
-    let mut arg_iter = line.split_terminator(",");
+    let mut arg_iter = line.split_terminator(',');
     arg_iter.next(); // skip first arg
     let size = match arg_iter.next() {
         None => {
@@ -99,7 +99,7 @@ fn parse_munmap_line(line: &str) -> Option<MapEvent> {
         None => {
             return None;
         }
-        Some(rest) => match rest.split(")").next() {
+        Some(rest) => match rest.split(')').next() {
             None => {
                 return None;
             }
