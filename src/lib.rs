@@ -3,6 +3,12 @@ extern crate lazy_static;
 
 use regex::Regex;
 
+mod z_decode;
+mod z_encode;
+
+pub use z_decode::z_decode;
+pub use z_encode::z_encode;
+
 #[derive(Debug, PartialEq, Eq)]
 pub struct GhcSummary {
     pub allocs: u64,

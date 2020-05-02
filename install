@@ -9,3 +9,5 @@ cp target/release/fs-compare ~/bin/fs-compare
 cp target/release/ghc-prof-compare ~/bin/ghc-prof-compare
 cp target/release/obj-loc ~/bin/obj-loc
 cp target/release/mmap-search ~/bin/mmap-search
+cp target/release/ze ~/bin/ze
+cp target/release/zd ~/bin/zd

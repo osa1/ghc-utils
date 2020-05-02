@@ -28,6 +28,14 @@ path = "bin/nofib_to_gitlab.rs"
 name = "mmap-search"
 path = "bin/mmap_search.rs"
 
+[[bin]]
+name = "ze"
+path = "bin/ze.rs"
+
+[[bin]]
+name = "zd"
+path = "bin/zd.rs"
+
 [dependencies]
 ansi_term = "0.12.1"
 clap = "2.3"
